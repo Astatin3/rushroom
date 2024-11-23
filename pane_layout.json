@@ -1,0 +1,14 @@
+{
+  "Properties": {
+    "mode": "Hidden",
+    "position": null,
+    "size": null,
+    "order": 1
+  },
+  "Console": {
+    "mode": "Tiled",
+    "position": null,
+    "size": null,
+    "order": 0
+  }
+}

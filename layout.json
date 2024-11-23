@@ -1,0 +1,20 @@
+{
+  "root": {
+    "Group": {
+      "direction": "Vertical",
+      "children": [
+        {
+          "Pane": "console"
+        },
+        {
+          "Pane": "properties"
+        }
+      ],
+      "sizes": [
+        0.5,
+        0.5
+      ]
+    }
+  },
+  "windowed_panes": {}
+}
