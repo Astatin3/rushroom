@@ -27,18 +27,18 @@ impl App {
         // }
 
         Some(Self {
-            pane_manager: PaneManager::new(Some(cc)),
+            pane_manager: PaneManager::new(cc),
         })
     }
 }
 
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            pane_manager: PaneManager::new(None),
-        }
-    }
-}
+// impl Default for App {
+//     fn default() -> Self {
+//         Self {
+//             pane_manager: PaneManager::new(None),
+//         }
+//     }
+// }
 
 impl eframe::App for App {
     /// Called each time the UI needs repainting, which may be many times per second.

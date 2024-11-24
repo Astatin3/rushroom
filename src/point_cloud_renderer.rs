@@ -14,6 +14,7 @@ use egui::Align2;
 use std::time::Instant;
 use egui::Stroke;
 use egui::Ui;
+use crate::panes;
 
 // Shader sources updated for 3D rendering with fixed-point positions
 const VERTEX_SHADER: &str = r#"
@@ -56,11 +57,13 @@ const FRAGMENT_SHADER: &str = r#"
 "#;
 
 // Camera controller for 3D navigation
+#[derive(Clone)]
 pub struct Camera {
     position: Vec3,
     pub orientation: Quat,
     distance: f32,
     pub point_size_scale: f32,
+    // last_pos: Option<Pos2>,
 }
 
 
@@ -71,6 +74,7 @@ impl Camera {
             orientation: Quat::IDENTITY,
             distance: 5.0,
             point_size_scale: 0.1,
+            // last_pos: None,
         }
     }
 
@@ -83,12 +87,9 @@ impl Camera {
     // }
 
     pub fn update(&mut self, i: InputState) {
-        // let response =  {
-            // Mouse controls
             let mut changed = false;
             
-            // Right mouse button for rotation
-            if i.pointer.secondary_down() {
+            if i.pointer.secondary_down() && !i.modifiers.shift {
                 let delta = i.pointer.delta();
                 
                 let rotation_speed = 0.01;
@@ -103,9 +104,31 @@ impl Camera {
                 self.orientation = self.orientation.normalize();
                 
                 changed = true;
-            }
-            
-            // Scroll for zoom\
+            } // else if i.pointer.secondary_down() && i.modifiers.shift {
+            //     let cur_pos = i.pointer.latest_pos();
+
+            //     if let Some(last_pos) = self.last_pos {
+            //         let last_angle = f32::atan2(last_pos.y, last_pos.x);
+            //         if let Some(cur_pos) = cur_pos {
+            //             let cur_angle = f32::atan2(cur_pos.y, cur_pos.x);
+
+            //             println!("{}",cur_angle - last_angle);
+
+            //             let pitch_rotation = Quat::from_axis_angle(Vec3::X, 0.);
+            //             let yaw_rotation = Quat::from_axis_angle(Vec3::Y, 0.);
+            //             let roll_rotation = Quat::from_axis_angle(Vec3::Z,cur_angle-last_angle);
+
+            //             self.orientation = self.orientation * pitch_rotation * yaw_rotation * roll_rotation;
+            //             self.orientation = self.orientation.normalize();
+
+            //             changed = true;
+
+            //         }
+            //     }
+
+            //     self.last_pos = cur_pos;
+            // }
+
             let zoom_delta = i.smooth_scroll_delta.x + i.smooth_scroll_delta.y;
             if zoom_delta != 0. {
                 if i.modifiers.shift {
@@ -119,7 +142,6 @@ impl Camera {
                 changed = true;
             }
             
-            // Middle mouse button for camera-plane panning
             if i.pointer.primary_down() {
                 let delta = i.pointer.delta();
                 let pan_speed = self.distance * 0.001;
@@ -135,7 +157,6 @@ impl Camera {
                 
                 changed = true;
             }
-
             
             
    
@@ -194,18 +215,35 @@ struct PlyHeader {
 //     color: Color32,
 // }
 
+
+#[derive(Default)]
 pub struct PointRenderer {
-    gl: Arc<glow::Context>,
-    program: glow::Program,
-    vao: glow::VertexArray,
-    vbo: glow::Buffer,
-    points: Vec<i32>,
+    pub gl:      Option<Arc<glow::Context>>,
+    program: Option<glow::Program>,
+    vao:     Option<glow::VertexArray>,
+    vbo:     Option<glow::Buffer>,
+    points:  Option<Vec<i32>>,
     // capacity: usize,
-    pub camera: Camera,
+    pub camera: Option<Camera>,
 }
 
+// impl Defalt for PointRenderer {
+//     fn default() -> Self {
+//         Self {
+//             gl:      Option<Arc<glow::Context>>,
+//             program: Option<glow::Program>,
+//             vao:     Option<glow::VertexArray>,
+//             vbo:     Option<glow::Buffer>,
+//             points:  Option<Vec<i32>>,
+//             // capacity: usize,
+//             camera: Option<Camera>,
+//         }
+//         }
+//     }
+// }
+
 impl PointRenderer {
-    pub fn new(gl: Option<Arc<glow::Context>>, initial_capacity: usize) -> Self {
+    pub fn init(&mut self, gl: Option<Arc<glow::Context>>, initial_capacity: usize) {
         use glow::HasContext;
 
         let gl = gl.unwrap();
@@ -258,24 +296,22 @@ impl PointRenderer {
             vbo
         };
         
-        PointRenderer {
-            gl,
-            program,
-            vao,
-            vbo,
-            points: Vec::with_capacity(initial_capacity * 7),
+        self.gl = Some(gl);
+        self.program = Some(program);
+        self.vao = Some(vao);
+        self.vbo = Some(vbo);
+        self.points = Some(Vec::with_capacity(initial_capacity * 7));
             // capacity: initial_capacity,
-            camera: Camera::new(),
-        }
+        self.camera = Some(Camera::new());
     }
     
     pub fn add_point(&mut self, x: i32, y: i32, z: i32, color: Color32) {
         let [r, g, b, a] = color.to_array();
-        self.points.extend_from_slice(&[x, y, z, r as i32, g as i32, b as i32, a as i32]);
+        self.points.as_mut().as_mut().expect("Not Initialised").extend_from_slice(&[x, y, z, r as i32, g as i32, b as i32, a as i32]);
     }
     
     pub fn clear(&mut self) {
-        self.points.clear();
+        self.points.as_mut().as_mut().expect("Not Initialised").clear();
     }
     
     pub fn render(&mut self, rect: Rect, input_state: Option<InputState>) {
@@ -283,55 +319,55 @@ impl PointRenderer {
         
         // Update camera
         if let Some(i) = input_state{
-            self.camera.update(i);
+            self.camera.as_mut().expect("Not Initialised").update(i);
         }
         
         unsafe {
-            self.gl.use_program(Some(self.program));
+            self.gl.as_mut().expect("Not Initialised").use_program(self.program);
             
             // Set up view-projection matrix
             let aspect = rect.width() / rect.height();
             let projection = Mat4::perspective_rh(45.0f32.to_radians(), aspect, 0.1, 1000.0);
-            let view = self.camera.get_view_matrix();
+            let view = self.camera.as_mut().expect("Not Initialised").get_view_matrix();
             let view_projection = projection * view;
             
-            let location = self.gl.get_uniform_location(self.program, "u_view_projection")
+            let location = self.gl.as_mut().expect("Not Initialised").get_uniform_location(*self.program.as_mut().expect("Not Initialised"), "u_view_projection")
                 .expect("Cannot get uniform location");
-            self.gl.uniform_matrix_4_f32_slice(Some(&location), false, &view_projection.to_cols_array());
+            self.gl.as_mut().expect("Not Initialised").uniform_matrix_4_f32_slice(Some(&location), false, &view_projection.to_cols_array());
             
             // Set position scale factor (converts uint positions to world space)
-            let scale_location = self.gl.get_uniform_location(self.program, "u_position_scale")
+            let scale_location = self.gl.as_mut().expect("Not Initialised").get_uniform_location(*self.program.as_mut().expect("Not Initialised"), "u_position_scale")
                 .expect("Cannot get scale uniform location");
-            self.gl.uniform_1_f32(Some(&scale_location), 0.001); // Adjust this value to scale your point cloud
+            self.gl.as_mut().expect("Not Initialised").uniform_1_f32(Some(&scale_location), 0.001); // Adjust this value to scale your point cloud
             
-            let point_size_location = self.gl.get_uniform_location(self.program, "u_point_size_scale")
+            let point_size_location = self.gl.as_mut().expect("Not Initialised").get_uniform_location(*self.program.as_mut().expect("Not Initialised"), "u_point_size_scale")
                 .expect("Cannot get point size scale location");
-            self.gl.uniform_1_f32(Some(&point_size_location), self.camera.point_size_scale);
+            self.gl.as_mut().expect("Not Initialised").uniform_1_f32(Some(&point_size_location), self.camera.as_mut().expect("Not Initialised").point_size_scale);
 
-            self.gl.bind_vertex_array(Some(self.vao));
-            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+            self.gl.as_mut().expect("Not Initialised").bind_vertex_array(self.vao);
+            self.gl.as_mut().expect("Not Initialised").bind_buffer(glow::ARRAY_BUFFER, Some(*self.vbo.as_mut().expect("Not Initialised")));
             
-            self.gl.buffer_sub_data_u8_slice(
+            self.gl.as_mut().expect("Not Initialised").buffer_sub_data_u8_slice(
                 glow::ARRAY_BUFFER,
                 0,
-                bytemuck::cast_slice(&self.points),
+                bytemuck::cast_slice(&self.points.as_mut().expect("Not Initialised")),
             );
             
-            self.gl.enable(glow::PROGRAM_POINT_SIZE);
-            self.gl.enable(glow::DEPTH_TEST);
+            self.gl.as_mut().expect("Not Initialised").enable(glow::PROGRAM_POINT_SIZE);
+            self.gl.as_mut().expect("Not Initialised").enable(glow::DEPTH_TEST);
 
 
-            self.gl.clear_depth_f32(1.0);
-            self.gl.depth_func(glow::LESS);
-            self.gl.depth_mask(true);
+            self.gl.as_mut().expect("Not Initialised").clear_depth_f32(1.0);
+            self.gl.as_mut().expect("Not Initialised").depth_func(glow::LESS);
+            self.gl.as_mut().expect("Not Initialised").depth_mask(true);
 
             // self.gl.clear_color(0.3, 0.3, 0.3, 1.0);
-            self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
+            self.gl.as_mut().expect("Not Initialised").clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
             
-            self.gl.draw_arrays(glow::POINTS, 0, (self.points.len() / 7) as i32);
+            self.gl.as_mut().expect("Not Initialised").draw_arrays(glow::POINTS, 0, (self.points.as_mut().as_mut().expect("Not Initialised").len() / 7) as i32);
             
-            self.gl.disable(glow::DEPTH_TEST);
-            self.gl.disable(glow::PROGRAM_POINT_SIZE);
+            self.gl.as_mut().expect("Not Initialised").disable(glow::DEPTH_TEST);
+            self.gl.as_mut().expect("Not Initialised").disable(glow::PROGRAM_POINT_SIZE);
         }
     }
 
@@ -358,7 +394,7 @@ impl PointRenderer {
         self.clear();
         
         // Reserve capacity
-        self.points.reserve(header.vertex_count * 7);
+        self.points.as_mut().as_mut().expect("Not Initialised").reserve(header.vertex_count * 7);
         
         // Parse vertices based on format
         if header.is_binary {
@@ -457,17 +493,48 @@ impl Drop for PointRenderer {
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PointRendererPane {
+    #[serde(skip)]
     renderer: Arc<Mutex<PointRenderer>>,
+    #[serde(skip)]
     points: Vec<(i32, i32, i32, Color32)>,
+    #[serde(skip)]
     file_dialog_open: bool,
+    #[serde(skip)]
     cur_path: String,
 }
 
+// impl Default for PointRenderer {
+//     fn default() -> Self {
+//         Self {}
+//     }
+// }
+
+#[typetag::serde]
 impl Pane for PointRendererPane {
-    fn new(cc: &eframe::CreationContext<'_>) -> PaneState where Self: Sized {
+    fn new() -> PaneState where Self: Sized {
+        let mut renderer = PointRenderer::default();
         let mut s = Self {
-            renderer: Arc::new(Mutex::new(PointRenderer::new(cc.gl.clone(), 1_000_000))),
+            renderer: Arc::new(Mutex::new(renderer)),
             points: Vec::new(),
             file_dialog_open: false,
             cur_path: "./".to_string(),
@@ -478,13 +545,20 @@ impl Pane for PointRendererPane {
             pane: Box::new(s),
         }
     }
+    fn init(&mut self, pcc: &panes::PsudoCreationContext){
+        self.renderer.lock().expect("Renderer Not Initialized").init(pcc.gl.clone(), 1_000_000);
+    }
     fn name(&mut self) -> &str {"Point Cloud"}
     fn render(&mut self, ui: &mut Ui){
+
         let max_rect = ui.max_rect();
 
         let renderer = self.renderer.clone();
+        if renderer.lock().expect("Renderer Not Initialized").gl.is_none() {
+            return;
+            // renderer.lock().expect("Renderer Not Initialized").init(ui.ctx()., 1_000_000);
+        }
         renderer.lock().expect("Renderer Not Initialized").clear();
-
 
         if self.file_dialog_open {
         egui::Window::new("Load PLY File")
@@ -557,7 +631,7 @@ impl Pane for PointRendererPane {
             renderer.lock().expect("Renderer Not Initialized").add_point(x, y, z, color);
         }
 
-        let o = renderer.lock().expect("Renderer Not Initialized").camera.orientation.clone();
+        let o = <std::option::Option<Camera> as Clone>::clone(&renderer.lock().expect("Renderer Not Initialized").camera).unwrap().orientation.clone();
 
         let cb = egui_glow::CallbackFn::new(move |_info, _painter| {
             renderer.lock().expect("Renderer Not Initialized").render(max_rect, input_state.clone());
@@ -570,28 +644,33 @@ impl Pane for PointRendererPane {
 
         ui.painter().add(callback);
 
-        let pos1 = o.inverse()*glam::Vec3::X;
-        let pos2 = o.inverse()*glam::Vec3::Y;
-        let pos3 = o.inverse()*glam::Vec3::Z;
 
         let line_length:f32 = 20.;
 
-        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos1.x, y: -line_length*pos1.y,}], Stroke {
-            width: 1.5,
-            color: Color32::RED,
-        });
+        // if let Some(input_state) = input_state {
+        //     if input_state.pointer.any_down() {
+
+            let pos1 = o.inverse()*glam::Vec3::X;
+            let pos2 = o.inverse()*glam::Vec3::Y;
+            let pos3 = o.inverse()*glam::Vec3::Z;
+
+            ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos1.x, y: -line_length*pos1.y,}], Stroke {
+                width: 1.5,
+                color: Color32::RED,
+            });
 
 
-        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos2.x, y: -line_length*pos2.y,}], Stroke {
-            width: 1.5,
-            color: Color32::BLUE,
-        });
+            ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos2.x, y: -line_length*pos2.y,}], Stroke {
+                width: 1.5,
+                color: Color32::BLUE,
+            });
 
 
-        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos3.x, y: -line_length*pos3.y,}], Stroke {
-            width: 1.5,
-            color: Color32::GREEN,
-        });
+            ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos3.x, y: -line_length*pos3.y,}], Stroke {
+                width: 1.5,
+                color: Color32::GREEN,
+            });
+        // }}
 
         let end_time = Instant::now();
 
