@@ -1,11 +1,19 @@
-use egui::{vec2, Color32, InputState, Rect, Response};
+use egui::{Color32, InputState, Rect};
 use eframe::egui_glow;
 use egui_glow::glow;
 use std::sync::Arc;
-use glam::{Vec3, Mat4, Quat, Vec2};
+use glam::{Vec3, Mat4, Quat};
 use std::fs::File;
-use std::path::Path;
+// use std::path::Path;
 use std::io::{BufReader, BufRead};
+use crate::panes::{Pane, PaneMode, PaneState};
+use std::sync::Mutex;
+use egui::FontId;
+use egui::Align2;
+// use egui::Pos2;
+use std::time::Instant;
+use egui::Stroke;
+use egui::Ui;
 
 // Shader sources updated for 3D rendering with fixed-point positions
 const VERTEX_SHADER: &str = r#"
@@ -66,13 +74,13 @@ impl Camera {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.position = Vec3::new(0.0, 0.0, 5.0);
-        self.orientation = Quat::IDENTITY;
-        self.distance = 5.0;
-        // self.point_size_scale = 0.1;
-        self.update_view();
-    }
+    // pub fn reset(&mut self) {
+    //     self.position = Vec3::new(0.0, 0.0, 5.0);
+    //     self.orientation = Quat::IDENTITY;
+    //     self.distance = 5.0;
+    //     // self.point_size_scale = 0.1;
+    //     self.update_view();
+    // }
 
     pub fn update(&mut self, i: InputState) {
         // let response =  {
@@ -112,7 +120,7 @@ impl Camera {
             }
             
             // Middle mouse button for camera-plane panning
-            if i.pointer.middle_down() {
+            if i.pointer.primary_down() {
                 let delta = i.pointer.delta();
                 let pan_speed = self.distance * 0.001;
             
@@ -165,9 +173,9 @@ impl Camera {
         )
     }
 
-    pub fn set_point_size_scale(&mut self, scale: f32) {
-        self.point_size_scale = scale.clamp(0.1, 10.0);
-    }
+    // pub fn set_point_size_scale(&mut self, scale: f32) {
+    //     self.point_size_scale = scale.clamp(0.1, 10.0);
+    // }
 
 }
 
@@ -192,7 +200,7 @@ pub struct PointRenderer {
     vao: glow::VertexArray,
     vbo: glow::Buffer,
     points: Vec<i32>,
-    capacity: usize,
+    // capacity: usize,
     pub camera: Camera,
 }
 
@@ -256,7 +264,7 @@ impl PointRenderer {
             vao,
             vbo,
             points: Vec::with_capacity(initial_capacity * 7),
-            capacity: initial_capacity,
+            // capacity: initial_capacity,
             camera: Camera::new(),
         }
     }
@@ -270,11 +278,13 @@ impl PointRenderer {
         self.points.clear();
     }
     
-    pub fn render(&mut self, rect: Rect, input_state: InputState) {
+    pub fn render(&mut self, rect: Rect, input_state: Option<InputState>) {
         use glow::HasContext;
         
         // Update camera
-        self.camera.update(input_state);
+        if let Some(i) = input_state{
+            self.camera.update(i);
+        }
         
         unsafe {
             self.gl.use_program(Some(self.program));
@@ -336,7 +346,7 @@ impl PointRenderer {
 
 
     // Add method to load points from PLY file
-    pub fn load_ply(&mut self, path: String) -> Result<(Vec<(i32, i32, i32, Color32)>), String> {
+    pub fn load_ply(&mut self, path: String) -> Result<Vec<(i32, i32, i32, Color32)>, String> {
         let file = File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
@@ -363,7 +373,7 @@ impl PointRenderer {
         let mut vertex_count = 0;
         let mut has_colors = false;
         let mut is_binary = false;
-        let mut in_header = true;
+        let in_header = true;
         
         while in_header {
             let line = lines.next()
@@ -400,7 +410,7 @@ impl PointRenderer {
         &mut self,
         lines: std::io::Lines<B>,
         header: PlyHeader,
-    ) -> Result<(Vec<(i32, i32, i32, Color32)>), String> {
+    ) -> Result<Vec<(i32, i32, i32, Color32)>, String> {
         let mut vec: Vec<(i32, i32, i32, Color32)> = Vec::new();
 
         for line in lines.take(header.vertex_count) {
@@ -436,7 +446,7 @@ impl PointRenderer {
             // self.add_point(x, y, z, color);
         }
         
-        Ok((vec))
+        Ok(vec)
     }
 
 }
@@ -444,5 +454,162 @@ impl PointRenderer {
 impl Drop for PointRenderer {
     fn drop(&mut self) {
         // Clean up GPU resources
+    }
+}
+
+pub struct PointRendererPane {
+    renderer: Arc<Mutex<PointRenderer>>,
+    points: Vec<(i32, i32, i32, Color32)>,
+    file_dialog_open: bool,
+    cur_path: String,
+}
+
+impl Pane for PointRendererPane {
+    fn new(cc: &eframe::CreationContext<'_>) -> PaneState where Self: Sized {
+        let mut s = Self {
+            renderer: Arc::new(Mutex::new(PointRenderer::new(cc.gl.clone(), 1_000_000))),
+            points: Vec::new(),
+            file_dialog_open: false,
+            cur_path: "./".to_string(),
+        };
+        PaneState {
+            id: s.name().to_string(),
+            mode: PaneMode::Center,
+            pane: Box::new(s),
+        }
+    }
+    fn name(&mut self) -> &str {"Point Cloud"}
+    fn render(&mut self, ui: &mut Ui){
+        let max_rect = ui.max_rect();
+
+        let renderer = self.renderer.clone();
+        renderer.lock().expect("Renderer Not Initialized").clear();
+
+
+        if self.file_dialog_open {
+        egui::Window::new("Load PLY File")
+            .show(ui.ctx(), |ui| {
+                ui.label("Enter PLY file path:");
+                ui.text_edit_singleline(&mut self.cur_path); // Add proper path handling
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Load").clicked() {
+                        let renderer = &mut renderer.lock().expect("Renderer Not Initialized");
+                            // Add proper path handling and error reporting
+                            let ply = renderer.load_ply(self.cur_path.clone());
+                            if let Err(e) = ply {
+                                eprintln!("Failed to load PLY: {}", e);
+                            }else{
+                                // self.renderer.lock().camera.reset();
+                                self.points = ply.unwrap();
+                            }
+                        
+                        self.file_dialog_open = false;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.file_dialog_open = false;
+                    }
+                });
+            });
+        }
+
+        let start_time = Instant::now();
+
+        let (rect, response) =
+            ui.allocate_exact_size(egui::Vec2 { x: max_rect.width(), y: max_rect.height() }, egui::Sense::drag());
+    
+
+        let input_state: Option<InputState> = ui.input(|input_state| 
+            if response.hovered() { //&& response.has_focus() {
+                Some(input_state.clone())
+            }else{None}
+        );
+
+        if self.points.is_empty() {
+           let radius = 1000i32;
+           for i in 0..100000 {
+            //    let theta = (i as f32 * 0.1).sin() * std::f32::consts::PI;
+            //    let phi = (i as f32 * 0.1).cos() * std::f32::consts::PI;
+               
+               let x = (radius as f32 * (i as f32).cos()) as i32;
+               let y = (radius as f32 * (i as f32).sin()) as i32;
+               let z = (i as f32 * 0.05) as i32;
+               
+                // let x = (i as f32 * 0.1) as u32;
+                // let y = (i as f32 * 0.1) as u32 ;
+                // let z = (i as f32 * 0.1) as u32;
+
+               // Color based on position
+               let color = Color32::from_rgba_premultiplied(
+                   ((x as f32 / radius as f32) * 255.0) as u8,
+                   ((y as f32 / radius as f32) * 255.0) as u8,
+                   ((z as f32 / radius as f32) * 255.0) as u8,
+                   255,
+               );
+               
+               self.points.push((x, y, z, color));
+           }
+        }
+
+        // let painter = ui.painter();
+
+        for &(x, y, z, color) in &self.points {
+            renderer.lock().expect("Renderer Not Initialized").add_point(x, y, z, color);
+        }
+
+        let o = renderer.lock().expect("Renderer Not Initialized").camera.orientation.clone();
+
+        let cb = egui_glow::CallbackFn::new(move |_info, _painter| {
+            renderer.lock().expect("Renderer Not Initialized").render(max_rect, input_state.clone());
+        });
+
+        let callback = egui::PaintCallback {
+            rect: max_rect,
+            callback: Arc::new(cb),
+        };
+
+        ui.painter().add(callback);
+
+        let pos1 = o.inverse()*glam::Vec3::X;
+        let pos2 = o.inverse()*glam::Vec3::Y;
+        let pos3 = o.inverse()*glam::Vec3::Z;
+
+        let line_length:f32 = 20.;
+
+        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos1.x, y: -line_length*pos1.y,}], Stroke {
+            width: 1.5,
+            color: Color32::RED,
+        });
+
+
+        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos2.x, y: -line_length*pos2.y,}], Stroke {
+            width: 1.5,
+            color: Color32::BLUE,
+        });
+
+
+        ui.painter().line_segment([rect.center(), rect.center() + egui::Vec2{ x: line_length*pos3.x, y: -line_length*pos3.y,}], Stroke {
+            width: 1.5,
+            color: Color32::GREEN,
+        });
+
+        let end_time = Instant::now();
+
+        // println!("{}", end_time.duration_since(start_time).as_millis());
+
+        let text_size = 12.;
+
+        ui.painter().text(max_rect.min, Align2::LEFT_TOP, 
+            format!("{} ms",end_time.duration_since(start_time).as_millis()), 
+            FontId::monospace(text_size), Color32::WHITE);
+
+        ui.painter().text(max_rect.min + egui::Vec2 {x:0.,y:text_size}, Align2::LEFT_TOP, 
+            format!("{} points", self.points.len()), 
+            FontId::monospace(text_size), Color32::WHITE);
+    }
+    fn context_menu(&mut self, ui: &mut Ui) {
+        if ui.button("Load PLY").clicked() {
+            self.file_dialog_open = true;
+        }
     }
 }
