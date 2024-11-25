@@ -1,6 +1,7 @@
 use egui::{Ui, Color32, Stroke};
 use eframe::egui_glow::glow;
 use std::sync::Arc;
+use crate::panes::*;
 // use erased_serde::serialize_trait_object;
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq)]
@@ -75,47 +76,6 @@ impl PaneState {
 // #[derive(serde::Deserialize, serde::Serialize)]
 // #[derive(serde::Deserialize, serde::Serialize)]
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct BluePane {}
-#[typetag::serde]
-impl Pane for BluePane {
-    fn new() -> PaneState where Self: Sized {
-        let mut s = Self {};
-        PaneState {
-            id: s.name().to_string(),
-            mode: PaneMode::Left,
-            pane: Box::new(s),
-        }
-    }
-    fn init(&mut self, _pcc: &PsudoCreationContext){}
-    fn name(&mut self) -> &str {"BLUE"}
-    fn render(&mut self, ui: &mut Ui){
-        ui.painter().rect(ui.max_rect(), 0., Color32::BLUE, Stroke::NONE);
-    }
-    fn context_menu(&mut self, _ui: &mut Ui) {}
-}
-
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct GreenPane {}
-#[typetag::serde]
-impl Pane for GreenPane {
-    fn new() -> PaneState where Self: Sized {
-        let mut s = Self {};
-        PaneState {
-            id: s.name().to_string(),
-            mode: PaneMode::Bottom,
-            pane: Box::new(s),
-        }
-    }
-    fn init(&mut self, _cc: &PsudoCreationContext){}
-    fn name(&mut self) -> &str {"Green"}
-    fn render(&mut self, ui: &mut Ui){
-        ui.painter().rect(ui.max_rect(), 0., Color32::GREEN, Stroke::NONE);
-    }
-    fn context_menu(&mut self, _ui: &mut Ui) {}
-}
-
 pub struct PsudoCreationContext {
     pub gl: Option<Arc<glow::Context>>,
 }
@@ -131,9 +91,8 @@ impl PaneManager {
         // if let Some(cc) = cc {
 
         let mut panes = vec![
-            BluePane::new(),
-            GreenPane::new(),
-            crate::point_cloud_renderer::PointRendererPane::new(),
+            point_cloud_renderer::PointRendererPane::new(),
+            pipeline_editor::PipelinePane::new(),
         ];
  
         let pcc = PsudoCreationContext {
@@ -172,21 +131,6 @@ impl PaneManager {
 
                     for i in 0..len {
                         ui.menu_button(self.panes[i].id.clone(), |ui| {
-                            if ui.button("Hidden").clicked() {
-                                self.panes[i].mode = PaneMode::Hidden;
-                            }
-                            if ui.button("Windowed").clicked() {
-                                self.panes[i].mode = PaneMode::Windowed;
-                            }
-                            if ui.button("Left").clicked() {
-                                self.panes[i].mode = PaneMode::Left;
-                            }
-                            if ui.button("Right").clicked() {
-                                self.panes[i].mode = PaneMode::Right;
-                            }
-                            if ui.button("Bottom").clicked() {
-                                self.panes[i].mode = PaneMode::Bottom;
-                            }
                             if ui.button("Center").clicked() {
                                 for a in 0..len {
                                     let pane2: &mut PaneState = &mut self.panes[a];
@@ -195,6 +139,27 @@ impl PaneManager {
                                     }
                                 }
                                 self.panes[i].mode = PaneMode::Center;
+                                ui.close_menu();
+                            }
+                            if ui.button("Windowed").clicked() {
+                                self.panes[i].mode = PaneMode::Windowed;
+                                ui.close_menu();
+                            }
+                            if ui.button("Left").clicked() {
+                                self.panes[i].mode = PaneMode::Left;
+                                ui.close_menu();
+                            }
+                            if ui.button("Right").clicked() {
+                                self.panes[i].mode = PaneMode::Right;
+                                ui.close_menu();
+                            }
+                            if ui.button("Bottom").clicked() {
+                                self.panes[i].mode = PaneMode::Bottom;
+                                ui.close_menu();
+                            }
+                            if ui.button("Hidden").clicked() {
+                                self.panes[i].mode = PaneMode::Hidden;
+                                ui.close_menu();
                             }
                         });
                     }
@@ -203,12 +168,11 @@ impl PaneManager {
                 ui.separator();
 
                 for i in 0..len {
-                    ui.menu_button(self.panes[i].id.clone(), |ui| {
-                        let pane: &mut PaneState = &mut self.panes[i];
-                        if pane.mode != PaneMode::Hidden {
-                            pane.pane.context_menu(ui);
-                        }
-                    });
+                    if self.panes[i].mode != PaneMode::Hidden {
+                        ui.menu_button(self.panes[i].id.clone(), |ui| {
+                            let _ = &mut self.panes[i].pane.context_menu(ui);    
+                        });
+                    }
                 }
             });
         });
@@ -269,7 +233,7 @@ impl PaneManager {
 
                 self.panes = panes;
 
-                for (mut pane) in &mut self.panes {
+                for pane in &mut self.panes {
                     pane.pane.init(&self.pcc);
                 }
             }

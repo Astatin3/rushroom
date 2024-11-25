@@ -4,7 +4,7 @@
 // use egui::{accesskit::TextAlign, mutex::Mutex, Align2, Color32, FontId, Pos2, Stroke};
 // use egui_glow::glow;
 
-use crate::panes::PaneManager;
+use crate::pane_manager::PaneManager;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // #[derive(serde::Deserialize, serde::Serialize)]

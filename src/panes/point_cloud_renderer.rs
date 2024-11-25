@@ -6,7 +6,7 @@ use glam::{Vec3, Mat4, Quat};
 use std::fs::File;
 // use std::path::Path;
 use std::io::{BufReader, BufRead};
-use crate::panes::{Pane, PaneMode, PaneState};
+use crate::pane_manager::{Pane, PaneMode, PaneState, PsudoCreationContext};
 use std::sync::Mutex;
 use egui::FontId;
 use egui::Align2;
@@ -14,7 +14,6 @@ use egui::Align2;
 use std::time::Instant;
 use egui::Stroke;
 use egui::Ui;
-use crate::panes;
 
 // Shader sources updated for 3D rendering with fixed-point positions
 const VERTEX_SHADER: &str = r#"
@@ -532,7 +531,7 @@ pub struct PointRendererPane {
 #[typetag::serde]
 impl Pane for PointRendererPane {
     fn new() -> PaneState where Self: Sized {
-        let mut renderer = PointRenderer::default();
+        let renderer = PointRenderer::default();
         let mut s = Self {
             renderer: Arc::new(Mutex::new(renderer)),
             points: Vec::new(),
@@ -541,11 +540,11 @@ impl Pane for PointRendererPane {
         };
         PaneState {
             id: s.name().to_string(),
-            mode: PaneMode::Center,
+            mode: PaneMode::Hidden,
             pane: Box::new(s),
         }
     }
-    fn init(&mut self, pcc: &panes::PsudoCreationContext){
+    fn init(&mut self, pcc: &PsudoCreationContext){
         self.renderer.lock().expect("Renderer Not Initialized").init(pcc.gl.clone(), 1_000_000);
     }
     fn name(&mut self) -> &str {"Point Cloud"}
