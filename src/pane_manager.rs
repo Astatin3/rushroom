@@ -12,6 +12,7 @@ pub enum PaneMode {
     Left,
     Bottom,
     Center,
+    Popup,
 }
 
 #[typetag::serde(tag = "type")]
@@ -61,20 +62,6 @@ impl PaneState {
     }
 }
 
-
-// impl Default for dyn Pane {
-//     fn default() -> (impl Pane + 'static)  {
-//         Box::new(NoPane {})
-//     }
-// }
-
-// pub struct PaneGroup {
-//     pub direction: TileDirection,
-//     pub panes: Vec<PaneState>,
-// }
-
-// #[derive(serde::Deserialize, serde::Serialize)]
-// #[derive(serde::Deserialize, serde::Serialize)]
 
 pub struct PsudoCreationContext {
     pub gl: Option<Arc<glow::Context>>,
@@ -130,7 +117,11 @@ impl PaneManager {
                 ui.menu_button("View", |ui| {
 
                     for i in 0..len {
+                        if self.panes[i].mode == PaneMode::Popup {
+                            continue;
+                        }
                         ui.menu_button(self.panes[i].id.clone(), |ui| {
+
                             if ui.button("Center").clicked() {
                                 for a in 0..len {
                                     let pane2: &mut PaneState = &mut self.panes[a];
@@ -168,7 +159,7 @@ impl PaneManager {
                 ui.separator();
 
                 for i in 0..len {
-                    if self.panes[i].mode != PaneMode::Hidden {
+                    if self.panes[i].mode != PaneMode::Hidden && self.panes[i].mode != PaneMode::Popup {
                         ui.menu_button(self.panes[i].id.clone(), |ui| {
                             let _ = &mut self.panes[i].pane.context_menu(ui);    
                         });
@@ -203,7 +194,7 @@ impl PaneManager {
                         pane.render(ui);
                     });
                 },
-                PaneMode::Windowed => {
+                PaneMode::Windowed | PaneMode::Popup => {
                     egui::Window::new(pane.id.clone())
                     .resizable(true)
                     .max_width(ui.clip_rect().width()).max_height(ui.clip_rect().height())

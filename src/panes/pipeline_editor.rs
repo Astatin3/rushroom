@@ -2,11 +2,8 @@ use crate::pane_manager::{Pane, PaneMode, PaneState, PsudoCreationContext};
 
 
 use egui::{Color32, Id, Pos2, Ui};
-use egui_snarl::{
-    ui::{PinInfo, SnarlStyle, SnarlViewer},
-    InPin, NodeId, OutPin, Snarl,
-};
-use egui_snarl::ui::{PinShape, WireStyle};
+use egui_snarl::{ui::{PinInfo, SnarlStyle, SnarlViewer}, InPin, InPinId, NodeId, OutPin, OutPinId, Snarl};
+use egui_snarl::ui::{WireStyle};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct PipelinePane {
@@ -64,8 +61,75 @@ impl Pane for PipelinePane {
 }
 
 impl PipelinePane {
-    pub fn run(&mut self) {
-        // Todo:
+    fn run(&mut self) {
+        if let Some(snarl) = &mut self.snarl {
+            fn remove_duplicates(nodes: Vec<NodeId>) -> Vec<NodeId> {
+                let mut new_vec : Vec<NodeId> = Vec::new();
+                for node in nodes {
+                    if !new_vec.contains(&node){
+                        new_vec.push(node);
+                    }
+                }
+                new_vec
+            }
+            fn has_input_wire(snarl: &Snarl<Box<dyn Node>>, nodeid: NodeId) -> bool {
+                for wire in snarl.wires() {
+                    if wire.1.node == nodeid {
+                        return true;
+                    }
+                }
+                false
+            }
+            fn get_output_wires(snarl: &Snarl<Box<dyn Node>>, nodeid: &NodeId) -> Vec<OutPinId> {
+                let mut arr: Vec<OutPinId> = Vec::new();
+                for wire in snarl.wires() {
+                    if &wire.0.node == nodeid {
+                        arr.push(wire.0)
+                    }
+                }
+                arr
+            }
+
+            // let wires = snarl.wires().map(|| {})
+
+            let mut nodes: Vec<Vec<NodeId>> = Vec::new();
+            let mut starting_nodes: Vec<NodeId> = Vec::new();
+            for node in snarl.nodes_ids_data() {
+                if !has_input_wire(snarl, node.0) {
+                    starting_nodes.push(node.0.clone())
+                }
+            }
+            starting_nodes = remove_duplicates(starting_nodes);
+            nodes.push(starting_nodes);
+
+
+            for i in 1..50 {
+                if nodes.get(i-1).is_none() {break}
+                let mut prevarr = nodes.get(i-1).unwrap();
+                if prevarr.len() == 0 {break}
+
+                let mut newarr: Vec<NodeId> = Vec::new();
+
+                for node in prevarr {
+                    for wire in get_output_wires(snarl, node) {
+                        newarr.push(wire.node);
+                    }
+                }
+
+                newarr = remove_duplicates(newarr);
+
+                nodes.push(newarr);
+            }
+
+            for nodearr in nodes {
+                println!("Nodes: ");
+                for node in nodearr {
+                    println!("{}", snarl.get_node(node).unwrap().get_name());
+                }
+            }
+
+
+        }
     }
 }
 
@@ -75,7 +139,7 @@ fn format_float(v: f64) -> String {
 }
 
 #[typetag::serde(tag = "type")]
-trait Node {
+pub trait Node {
     fn new() -> Self
     where
         Self: Sized;
@@ -89,6 +153,7 @@ trait Node {
     fn can_rx(&self, other: &Box<dyn Node>) -> bool;
     fn can_tx(&self, other: &Box<dyn Node>) -> bool;
     fn context_menu(&self, ui: &mut Ui);
+    fn update(&self, ui: &mut Ui);
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -98,38 +163,83 @@ impl Node for Node1 {
     fn new() -> Self {
         Self
     }
-
-    fn get_name(&self) -> &str {
-        "Test"
-    }
+    fn get_name(&self) -> &str { "Test" }
     fn get_description(&self) -> &str {"Test Node"}
-
-    fn duplicate(&self) -> Box<dyn Node> {
-        Box::new(Self::new())
-    }
-
+    fn duplicate(&self) -> Box<dyn Node> { Box::new(Self::new()) }
     fn inputs(&self) -> usize {
         1
     }
     fn outputs(&self) -> usize {
         1
     }
-    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo {
-        PinInfo::square()
-    }
-    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo {
-        PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3)
-    }
+    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
     fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
     fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
-    fn context_menu(&self, ui: &mut Ui) {
-        ui.label("Test!");
-    }
+    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&self, ui: &mut Ui) {}
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct Node2;
+#[typetag::serde]
+impl Node for Node2 {
+    fn new() -> Self {
+        Self
+    }
+    fn get_name(&self) -> &str { "Test 2-1" }
+    fn get_description(&self) -> &str {"Test Node"}
+    fn duplicate(&self) -> Box<dyn Node> { Box::new(Self::new()) }
+    fn inputs(&self) -> usize {
+        2
+    }
+    fn outputs(&self) -> usize {
+        1
+    }
+    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
+    fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
+        true
+    }
+    fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
+        true
+    }
+    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&self, ui: &mut Ui) {}
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct Node3;
+#[typetag::serde]
+impl Node for crate::panes::pipeline_editor::Node3 {
+    fn new() -> Self {
+        Self
+    }
+    fn get_name(&self) -> &str { "Test 1-2" }
+    fn get_description(&self) -> &str {"Test Node"}
+    fn duplicate(&self) -> Box<dyn Node> { Box::new(Self::new()) }
+    fn inputs(&self) -> usize {
+        1
+    }
+    fn outputs(&self) -> usize {
+        2
+    }
+    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
+    fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
+        true
+    }
+    fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
+        true
+    }
+    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&self, ui: &mut Ui) {}
+}
+
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct NodeViewer;
@@ -147,6 +257,12 @@ impl SnarlViewer<Box<dyn Node>> for NodeViewer {
             }
 
             snarl.connect(from.id, to.id);
+        }
+    }
+
+    fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<Box<dyn Node>>) {
+        for &remote in &to.remotes {
+            snarl.disconnect(remote, to.id);
         }
     }
 
@@ -239,19 +355,39 @@ impl SnarlViewer<Box<dyn Node>> for NodeViewer {
         } else if ui.button("Duplicate").clicked() {
             snarl.insert_node(Pos2 {x:0.,y:0.}, snarl.get_node(nodeid).unwrap().duplicate());
             ui.close_menu();
+        // }// else if ui.button("Remove All Connections").clicked() {
+        //     ui.
+        //     ui.close_menu();
         } else {
             snarl.get_node(nodeid).unwrap().context_menu(ui);
         }
+    }
+
+    fn show_body(&mut self, node: NodeId, inputs: &[InPin], outputs: &[OutPin], ui: &mut Ui, scale: f32, snarl: &mut Snarl<Box<dyn Node>>) {
+        snarl.get_node(node).unwrap().update(ui);
     }
 }
 
 impl NodeViewer {
     pub fn add_node_menu(pos: Pos2, ui: &mut Ui, snarl: &mut Snarl<Box<dyn Node>>) {
         ui.label("Add node");
-        let button = ui.button("Test1");
-        if button.clicked() {
+
+
+        if ui.button("Test").clicked() {
             snarl.insert_node(pos, Box::new(Node1::new()));
             ui.close_menu();
+        } else if ui.button("Constants").clicked() {
+            snarl.insert_node(pos, Box::new(crate::nodes::constants::Constants::new()));
+            ui.close_menu();
+        } else if ui.button("Test 2-1").clicked() {
+            snarl.insert_node(pos, Box::new(Node2::new()));
+            ui.close_menu();
+        } else if ui.button("Test 1-2").clicked() {
+            snarl.insert_node(pos, Box::new(Node3::new()));
+            ui.close_menu();
         }
+
+
+
     }
 }
