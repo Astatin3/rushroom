@@ -122,7 +122,7 @@ impl PaneManager {
                         }
                         ui.menu_button(self.panes[i].id.clone(), |ui| {
 
-                            if ui.button("Center").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Center { "*" } else { " " } }).to_owned() + "Center").clicked() {
                                 for a in 0..len {
                                     let pane2: &mut PaneState = &mut self.panes[a];
                                     if pane2.mode == PaneMode::Center {
@@ -132,23 +132,23 @@ impl PaneManager {
                                 self.panes[i].mode = PaneMode::Center;
                                 ui.close_menu();
                             }
-                            if ui.button("Windowed").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Windowed { "*" } else { " " } }).to_owned() + "Window").clicked() {
                                 self.panes[i].mode = PaneMode::Windowed;
                                 ui.close_menu();
                             }
-                            if ui.button("Left").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Left { "*" } else { " " } }).to_owned() + "Left").clicked() {
                                 self.panes[i].mode = PaneMode::Left;
                                 ui.close_menu();
                             }
-                            if ui.button("Right").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Right { "*" } else { " " } }).to_owned() + "Right").clicked() {
                                 self.panes[i].mode = PaneMode::Right;
                                 ui.close_menu();
                             }
-                            if ui.button("Bottom").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Bottom { "*" } else { " " } }).to_owned() + "Bottom").clicked() {
                                 self.panes[i].mode = PaneMode::Bottom;
                                 ui.close_menu();
                             }
-                            if ui.button("Hidden").clicked() {
+                            if ui.button(({ if self.panes[i].mode == PaneMode::Hidden { "*" } else { " " } }).to_owned() + "Hidden").clicked() {
                                 self.panes[i].mode = PaneMode::Hidden;
                                 ui.close_menu();
                             }

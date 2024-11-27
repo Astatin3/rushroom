@@ -1,3 +1,4 @@
+use eframe::emath::Rect;
 use crate::pane_manager::{Pane, PaneMode, PaneState, PsudoCreationContext};
 
 
@@ -148,12 +149,12 @@ pub trait Node {
     fn duplicate(&self) -> Box<dyn Node>;
     fn inputs(&self) -> usize;
     fn outputs(&self) -> usize;
-    fn show_input(&self, pin: &InPin, ui: &mut Ui, scale: f32) -> PinInfo;
-    fn show_output(&self, pin: &OutPin, ui: &mut Ui, scale: f32) -> PinInfo;
+    fn show_input(&mut self, pin: &InPin, ui: &mut Ui, scale: f32) -> PinInfo;
+    fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, scale: f32) -> PinInfo;
     fn can_rx(&self, other: &Box<dyn Node>) -> bool;
     fn can_tx(&self, other: &Box<dyn Node>) -> bool;
-    fn context_menu(&self, ui: &mut Ui);
-    fn update(&self, ui: &mut Ui);
+    fn context_menu(&mut self, ui: &mut Ui);
+    fn update(&mut self, ui: &mut Ui);
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -172,16 +173,16 @@ impl Node for Node1 {
     fn outputs(&self) -> usize {
         1
     }
-    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
-    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
+    fn show_input(&mut self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&mut self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
     fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
     fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
-    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
-    fn update(&self, ui: &mut Ui) {}
+    fn context_menu(&mut self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&mut self, ui: &mut Ui) {}
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -200,16 +201,16 @@ impl Node for Node2 {
     fn outputs(&self) -> usize {
         1
     }
-    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
-    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
+    fn show_input(&mut self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&mut self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
     fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
     fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
-    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
-    fn update(&self, ui: &mut Ui) {}
+    fn context_menu(&mut self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&mut self, ui: &mut Ui) {}
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -228,16 +229,16 @@ impl Node for crate::panes::pipeline_editor::Node3 {
     fn outputs(&self) -> usize {
         2
     }
-    fn show_input(&self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
-    fn show_output(&self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
+    fn show_input(&mut self, _pin: &InPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square() }
+    fn show_output(&mut self, _pin: &OutPin, _ui: &mut Ui, _scale: f32) -> PinInfo { PinInfo::square().with_fill(Color32::RED).with_wire_style(WireStyle::Bezier3) }
     fn can_rx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
     fn can_tx(&self, _other: &Box<dyn Node>) -> bool {
         true
     }
-    fn context_menu(&self, ui: &mut Ui) { ui.label("Test!"); }
-    fn update(&self, ui: &mut Ui) {}
+    fn context_menu(&mut self, ui: &mut Ui) { ui.label("Test!"); }
+    fn update(&mut self, ui: &mut Ui) {}
 }
 
 
@@ -286,7 +287,7 @@ impl SnarlViewer<Box<dyn Node>> for NodeViewer {
         snarl: &mut Snarl<Box<dyn Node>>,
     ) -> PinInfo {
         snarl
-            .get_node(pin.id.node)
+            .get_node_mut(pin.id.node)
             .unwrap()
             .show_input(pin, ui, scale)
     }
@@ -299,7 +300,7 @@ impl SnarlViewer<Box<dyn Node>> for NodeViewer {
         snarl: &mut Snarl<Box<dyn Node>>,
     ) -> PinInfo {
         snarl
-            .get_node(pin.id.node)
+            .get_node_mut(pin.id.node)
             .unwrap()
             .show_output(pin, ui, scale)
     }
@@ -349,24 +350,29 @@ impl SnarlViewer<Box<dyn Node>> for NodeViewer {
         snarl: &mut Snarl<Box<dyn Node + 'static>>,
     ) {
         ui.label("Node menu");
+        snarl.get_node_mut(nodeid).unwrap().context_menu(ui);
         if ui.button("Remove").clicked() {
             snarl.remove_node(nodeid);
             ui.close_menu();
         } else if ui.button("Duplicate").clicked() {
-            snarl.insert_node(Pos2 {x:0.,y:0.}, snarl.get_node(nodeid).unwrap().duplicate());
+            let node = snarl.get_node_mut(nodeid).unwrap().duplicate();
+            snarl.insert_node(Pos2 {x:0.,y:0.}, node);
             ui.close_menu();
         // }// else if ui.button("Remove All Connections").clicked() {
         //     ui.
         //     ui.close_menu();
-        } else {
-            snarl.get_node(nodeid).unwrap().context_menu(ui);
         }
     }
 
+    fn has_body(&mut self, node: &Box<dyn Node>) -> bool {
+        true
+    }
+
     fn show_body(&mut self, node: NodeId, inputs: &[InPin], outputs: &[OutPin], ui: &mut Ui, scale: f32, snarl: &mut Snarl<Box<dyn Node>>) {
-        snarl.get_node(node).unwrap().update(ui);
+        snarl.get_node_mut(node).unwrap().update(ui);
     }
 }
+
 
 impl NodeViewer {
     pub fn add_node_menu(pos: Pos2, ui: &mut Ui, snarl: &mut Snarl<Box<dyn Node>>) {
